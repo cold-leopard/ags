@@ -3,7 +3,7 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
     astal = {
-      url = "github:aylur/astal";
+      url = "github:cold-leopard/astal";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -13,30 +13,35 @@
     nixpkgs,
     astal,
   }: let
-    inherit (astal.packages.${system}) astal3 astal4 io gjs;
 
-    system = "x86_64-linux"; # TODO: other architectures
-    pkgs = nixpkgs.legacyPackages.x86_64-linux;
+    supportedSystems = [ "x86_64-linux" ];
+    forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: (forSystem system f));
+    forSystem = system: f: f rec {
+      inherit system;
+      inherit (astal.packages.${system}) astal3 astal4 io gjs;
+      pkgs = nixpkgs.legacyPackages.${system};
 
-    astal-io = io;
-    astal-gjs = "${gjs}/share/astal/gjs";
+      astal-io = io;
+      astal-gjs = "${gjs}/share/astal/gjs";
 
-    agsPackages = {
-      default = self.packages.${system}.ags;
-      ags = pkgs.callPackage ./nix {
-        inherit astal3 astal4 astal-io astal-gjs;
-      };
-      agsFull = pkgs.callPackage ./nix {
-        inherit astal3 astal4 astal-io astal-gjs;
-        extraPackages = builtins.attrValues (
-          builtins.removeAttrs astal.packages.${system} ["docs"]
-        );
+      agsPackages = {
+	default = self.packages.${system}.ags;
+	ags = pkgs.callPackage ./nix {
+	  inherit astal3 astal4 astal-io astal-gjs;
+	};
+	agsFull = pkgs.callPackage ./nix {
+	  inherit astal3 astal4 astal-io astal-gjs;
+	  extraPackages = builtins.attrValues (
+	    builtins.removeAttrs astal.packages.${system} ["docs"]
+	  );
+	};
       };
     };
-  in {
-    lib.bundle = import ./nix/bundle.nix {inherit self pkgs;};
 
-    packages.${system} = astal.packages.${system} // agsPackages;
+  in {
+    lib.bundle = forAllSystems({pkgs, ...}: import ./nix/bundle.nix {inherit self pkgs;});
+
+    packages= forAllSystems({system, agsPackages, ...}:  astal.packages.${system} // agsPackages);
 
     templates.default = {
       path = ./nix/template;
